@@ -9,6 +9,7 @@ const Sidebar = () => {
     { name: 'Upload', path: '/upload' },
     { name: 'Watch', path: '/watch' },
     { name: 'Trending', path: '/trending' },
+    { name: 'History', path: '/history' },
   ];
 
   return (

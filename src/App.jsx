@@ -3,6 +3,7 @@ import Profile from './Pages/Profile';
 import Watch from './Pages/Watch';
 import Upload from './Pages/Upload';
 import Trending from './Pages/Trending';
+import WatchHistory from './Pages/WatchHistory';
 import { Routes, Route } from 'react-router-dom';
 import Navbar from './Components/Navbar';
 import Sidebar from './Components/Sidebar';
@@ -65,6 +66,7 @@ function App() {
         <Route path="/upload" element={<Upload />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/trending" element={<Trending />} />
+        <Route path="/history" element={<WatchHistory />} />
       </Routes>
     </Layout>
   );

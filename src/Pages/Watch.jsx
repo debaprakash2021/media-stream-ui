@@ -68,6 +68,26 @@ const Watch = () => {
   };
   const handleProgressLeave = () => setHoverTime(null);
 
+  // Save to History
+  useEffect(() => {
+    if (state.videoId) {
+      const videoData = {
+        videoId: state.videoId,
+        title: state.title,
+        channel: state.channel,
+        description: state.description,
+        thumbnail: state.thumbnail,
+        timestamp: Date.now(),
+      };
+
+      const history = JSON.parse(localStorage.getItem('watchHistory')) || [];
+      const filteredHistory = history.filter(v => v.videoId !== state.videoId);
+      const newHistory = [videoData, ...filteredHistory].slice(0, 50);
+
+      localStorage.setItem('watchHistory', JSON.stringify(newHistory));
+    }
+  }, [state.videoId]);
+
   // Determine video source
   let videoSrc = SAMPLE_URLS['ScMzIvxBSi4'][resolution];
   let title = 'Epic Mountain Adventure';
