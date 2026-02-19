@@ -9,8 +9,14 @@ export async function fetchTrendingVideos() {
   });
 
   if (!res.ok) {
+    // ✅ CORRECTION: Proper error signaling to UI
     throw new Error("Failed to fetch trending videos");
   }
 
-  return res.json();
+  const data = await res.json();
+
+  // ✅ CORRECTION:
+  // Normalize API response HERE, not in UI.
+  // RapidAPI responses vary between `videos` and `items`
+  return data.videos || data.items || [];
 }
