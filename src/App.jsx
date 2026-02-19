@@ -6,6 +6,7 @@ import Watch from "./Pages/Watch";
 import Upload from "./Pages/Upload";
 import Profile from "./Pages/Profile";
 import WatchHistory from "./Pages/WatchHistory";
+import Search from "./Pages/Search";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path="/upload" element={<Upload />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/history" element={<WatchHistory />} />
+          <Route path="/search" element={<Search />} />
         </Routes>
       </Layout>
     </BrowserRouter>
