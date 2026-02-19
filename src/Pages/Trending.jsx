@@ -1,20 +1,48 @@
-import React from 'react';
-import {
-  TRENDING_VIDEOS,
-  TrendingVideoCard,
-} from '../Components/TrendingVideoCard';
+import { useEffect, useState } from "react";
+import { fetchTrendingVideos } from "../api/trending";
+import TrendingShimmer from "../Components/Shimmer/TrendingShimmer";
+import TrendingCard from "../Components/Trending/TrendingCard";
+import { trendingDummy } from "../data/trendingDummy";
 
-const Trending = () => {
+function Trending() {
+  const [videos, setVideos] = useState(trendingDummy);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadTrending() {
+      try {
+        const data = await fetchTrendingVideos();
+        if (!ignore) {
+          setVideos(data.videos || []);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadTrending();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  if (loading) return <TrendingShimmer />;
+
   return (
-    <div className="p-4 bg-black min-h-screen">
-      <h1 className="text-2xl font-bold mb-4 text-white">Trending</h1>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {TRENDING_VIDEOS.map(video => (
-          <TrendingVideoCard key={video.id} video={video} />
+    <div className="p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+        {videos.map((video) => (
+          <TrendingCard key={video.video_id} video={video} />
         ))}
       </div>
     </div>
   );
-};
+}
 
 export default Trending;
