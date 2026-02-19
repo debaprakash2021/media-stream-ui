@@ -1,2 +1,3 @@
-export const RAPID_API_HOST = "youtube-v2.p.rapidapi.com";
-export const TRENDING_ENDPOINT = "https://youtube-v2.p.rapidapi.com/trending";
+// ✅ Switched from RapidAPI (dead) to YouTube Data API v3
+export const YT_API_BASE = "https://www.googleapis.com/youtube/v3";
+export const YT_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;

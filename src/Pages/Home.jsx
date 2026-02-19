@@ -1,99 +1,102 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-
-const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
+import { YT_API_BASE, YT_API_KEY } from "../constants/api";
+import ShimmerCard from "../Components/ShimmerCard";
 
 function Home() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [nextPageToken, setNextPageToken] = useState(""); // ✅ dynamic token from API
 
-  // ✅ CORRECTION: URL-driven state instead of props
   const [searchParams, setSearchParams] = useSearchParams();
-
-  const query = searchParams.get("query") || "music"; // default query
+  const query = searchParams.get("query") || "music";
   const pageToken = searchParams.get("pageToken") || "";
 
   useEffect(() => {
-    let ignore = false; // ✅ CORRECTION: Proper cleanup flag
+    let ignore = false;
+    setLoading(true);
 
     async function fetchVideos() {
-      setLoading(true);
-
       try {
         const res = await fetch(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=12&q=${query}&pageToken=${pageToken}&key=${API_KEY}`
+          `${YT_API_BASE}/search?part=snippet&type=video&maxResults=12&q=${encodeURIComponent(query)}&pageToken=${pageToken}&key=${YT_API_KEY}`
         );
-
         const data = await res.json();
 
         if (!ignore) {
           setVideos(data.items || []);
+          setNextPageToken(data.nextPageToken || ""); // ✅ save real token from response
         }
       } catch (error) {
         console.error("Error fetching videos:", error);
       } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
+        if (!ignore) setLoading(false);
       }
     }
 
     fetchVideos();
-
-    return () => {
-      // ✅ CORRECTION: Cleanup to prevent memory leaks
-      ignore = true;
-    };
+    return () => { ignore = true; };
   }, [query, pageToken]);
 
-  const handlePagination = (token) => {
-    // ✅ CORRECTION: Persist pagination in URL instead of state
-    setSearchParams({
-      query,
-      pageToken: token,
-    });
+  const handleNext = () => {
+    if (nextPageToken) {
+      setSearchParams({ query, pageToken: nextPageToken }); // ✅ real dynamic token
+    }
+  };
+
+  const handlePrev = () => {
+    setSearchParams({ query, pageToken: "" });
   };
 
   return (
     <div className="p-4 min-h-screen">
       {loading ? (
+        // ✅ Using ShimmerCard component instead of inline shimmer
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          {/* ✅ CORRECTION: Layout shift prevention using fixed aspect ratio */}
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="animate-pulse">
-              <div className="aspect-video bg-zinc-800 rounded-lg mb-3"></div>
-              <div className="h-4 bg-zinc-700 rounded w-3/4 mb-2"></div>
-              <div className="h-3 bg-zinc-700 rounded w-1/2"></div>
-            </div>
+          {Array.from({ length: 12 }).map((_, i) => (
+            <ShimmerCard key={i} />
           ))}
         </div>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {videos.map((video) => (
-              <div key={video.id.videoId} className="cursor-pointer">
+              <div key={video.id.videoId} className="cursor-pointer group">
                 <div className="aspect-video overflow-hidden rounded-lg">
                   <img
                     src={video.snippet.thumbnails.medium.url}
                     alt={video.snippet.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                   />
                 </div>
-                <h3 className="mt-2 font-semibold line-clamp-2">
+                <h3 className="mt-2 font-semibold line-clamp-2 text-white">
                   {video.snippet.title}
                 </h3>
+                <p className="text-gray-400 text-sm mt-1">
+                  {video.snippet.channelTitle}
+                </p>
               </div>
             ))}
           </div>
 
-          {/* Example Pagination Button (Replace with component later) */}
-          <div className="mt-6 flex justify-center">
-            <button
-              onClick={() => handlePagination("CAUQAA")}
-              className="px-4 py-2 bg-blue-600 text-white rounded"
-            >
-              Next Page
-            </button>
+          {/* ✅ Pagination using real API tokens */}
+          <div className="mt-8 flex justify-center gap-4">
+            {pageToken && (
+              <button
+                onClick={handlePrev}
+                className="px-4 py-2 bg-zinc-700 text-white rounded hover:bg-zinc-600 transition"
+              >
+                ← Previous
+              </button>
+            )}
+            {nextPageToken && (
+              <button
+                onClick={handleNext}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+              >
+                Next →
+              </button>
+            )}
           </div>
         </>
       )}

@@ -1,20 +1,9 @@
-import { RAPID_API_HOST } from "../constants/api";
+import { YT_API_BASE, YT_API_KEY } from "../constants/api";
 import { PAGE_SIZE } from "../constants/pagination";
 
-const SEARCH_ENDPOINT = "https://youtube-v2.p.rapidapi.com/search";
-
-export async function fetchSearchResults(query, page = 1) {
-  // ✅ CORRECTION: calculate offset based on page
-  const offset = (page - 1) * PAGE_SIZE;
-
+export async function fetchSearchResults(query, pageToken = "") {
   const res = await fetch(
-    `${SEARCH_ENDPOINT}?query=${query}&limit=${PAGE_SIZE}&offset=${offset}`,
-    {
-      headers: {
-        "X-RapidAPI-Key": import.meta.env.VITE_RAPID_API_KEY,
-        "X-RapidAPI-Host": RAPID_API_HOST,
-      },
-    }
+    `${YT_API_BASE}/search?part=snippet&type=video&maxResults=${PAGE_SIZE}&q=${encodeURIComponent(query)}&pageToken=${pageToken}&key=${YT_API_KEY}`
   );
 
   if (!res.ok) {
@@ -23,6 +12,17 @@ export async function fetchSearchResults(query, page = 1) {
 
   const data = await res.json();
 
-  // ✅ CORRECTION: normalize API response
-  return data.videos || data.items || [];
+  // ✅ Normalize to consistent shape TrendingCard expects
+  const videos = (data.items || []).map(item => ({
+    video_id: item.id.videoId,
+    title: item.snippet.title,
+    thumbnails: [{ url: item.snippet.thumbnails.medium.url }],
+    channel: item.snippet.channelTitle,
+  }));
+
+  return {
+    videos,
+    nextPageToken: data.nextPageToken || null,
+    prevPageToken: data.prevPageToken || null,
+  };
 }

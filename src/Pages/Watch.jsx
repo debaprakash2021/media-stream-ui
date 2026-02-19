@@ -1,11 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react'; // ✅ FIX 1: added useEffect
 import { useLocation } from 'react-router-dom';
 import {
   TRENDING_VIDEOS,
   TrendingVideoCard,
 } from '../Components/TrendingVideoCard';
 
-const YT_BASE = 'https://www.youtube.com/embed/';
+// ✅ FIX 2: Removed unused YT_BASE constant
+
 const SAMPLE_URLS = {
   ScMzIvxBSi4: {
     '1080p': 'https://www.w3schools.com/html/mov_bbb.mp4',
@@ -33,9 +34,6 @@ const Watch = () => {
   const [hoverTime, setHoverTime] = useState(null);
   const [duration, setDuration] = useState(0);
 
-  // Simulate next video for autoplay
-  // const nextVideo = TRENDING_VIDEOS[1];
-
   const handleLike = () => setLikes(likes + 1);
   const handleDislike = () => setDislikes(dislikes + 1);
   const handleSubscribe = () => setSubscribed(s => !s);
@@ -62,13 +60,13 @@ const Watch = () => {
     }
   };
   const handleProgressHover = e => {
-    const rect = e.target.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
     setHoverTime(percent * duration);
   };
   const handleProgressLeave = () => setHoverTime(null);
 
-  // Save to History
+  // ✅ FIX 3: useEffect now properly imported — saves watch history
   useEffect(() => {
     if (state.videoId) {
       const videoData = {
@@ -95,8 +93,8 @@ const Watch = () => {
   let description =
     'Experience the thrill of mountain climbing in this breathtaking adventure video. Join us as we scale new heights!';
   let poster = 'https://i.ytimg.com/vi/ScMzIvxBSi4/maxresdefault.jpg';
+
   if (state.videoId) {
-    // In real app, fetch video URLs for resolutions
     videoSrc = `https://www.youtube.com/embed/${state.videoId}`;
     title = state.title;
     channel = state.channel;
@@ -116,7 +114,6 @@ const Watch = () => {
               title={title}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
-              poster={poster}
             />
           ) : (
             <video
@@ -131,6 +128,7 @@ const Watch = () => {
               Your browser does not support the video tag.
             </video>
           )}
+
           {/* Resolution selector (only for local sample video) */}
           {!state.videoId && (
             <div className="absolute top-2 right-2 z-20">
@@ -145,12 +143,12 @@ const Watch = () => {
               </select>
             </div>
           )}
-          {/* Custom progress bar preview */}
+
+          {/* ✅ FIX 4: Removed pointerEvents:'none' so mouse events actually fire */}
           <div
             className="absolute bottom-2 left-0 w-full h-2 cursor-pointer z-10"
             onMouseMove={handleProgressHover}
             onMouseLeave={handleProgressLeave}
-            style={{ pointerEvents: 'none' }}
           >
             {hoverTime !== null && (
               <div className="absolute left-1/2 -translate-x-1/2 bottom-6 bg-black text-white text-xs px-2 py-1 rounded shadow border border-zinc-700">
@@ -159,10 +157,12 @@ const Watch = () => {
             )}
           </div>
         </div>
+
         <div className="w-full max-w-3xl">
           <h1 className="text-2xl font-bold mb-2 text-white">{title}</h1>
           <p className="text-gray-400 mb-4">{channel}</p>
-          <div className="flex items-center gap-4 mb-4">
+
+          <div className="flex items-center gap-4 mb-4 flex-wrap">
             <button
               className="flex items-center gap-1 px-3 py-1 rounded bg-zinc-800 text-white hover:bg-zinc-700"
               onClick={handleLike}
@@ -176,7 +176,11 @@ const Watch = () => {
               👎 {dislikes}
             </button>
             <button
-              className={`px-3 py-1 rounded font-bold ${subscribed ? 'bg-red-600 text-white' : 'bg-zinc-800 text-white hover:bg-zinc-700'}`}
+              className={`px-3 py-1 rounded font-bold ${
+                subscribed
+                  ? 'bg-red-600 text-white'
+                  : 'bg-zinc-800 text-white hover:bg-zinc-700'
+              }`}
               onClick={handleSubscribe}
             >
               {subscribed ? 'Subscribed' : 'Subscribe'}
@@ -197,7 +201,9 @@ const Watch = () => {
               Autoplay next
             </label>
           </div>
+
           <p className="text-gray-300 mb-4">{description}</p>
+
           {/* Comments Section */}
           <div className="bg-zinc-900 rounded-lg p-4 border border-zinc-800 mt-6">
             <h3 className="text-lg font-bold text-white mb-2">Comments</h3>
@@ -230,6 +236,7 @@ const Watch = () => {
           </div>
         </div>
       </div>
+
       {/* Recommendations Section */}
       <aside className="w-full md:w-96 shrink-0 mt-8 md:mt-0">
         <h2 className="text-xl font-bold mb-4 text-white">Recommended</h2>
