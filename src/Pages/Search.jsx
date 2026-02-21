@@ -1,97 +1,149 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { fetchSearchResults } from "../api/search";
 import SearchShimmer from "../Components/Shimmer/SearchShimmer";
 import TrendingCard from "../Components/Trending/TrendingCard";
 
 function Search() {
-  const [searchParams, setSearchParams] = useSearchParams();
-
+  const [searchParams] = useSearchParams();
   const query = searchParams.get("q");
-  const pageToken = searchParams.get("pageToken") || ""; // ✅ token-based pagination
 
   const [videos, setVideos] = useState([]);
-  const [nextPageToken, setNextPageToken] = useState(null);
-  const [prevPageToken, setPrevPageToken] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const sentinelRef = useRef(null);
+
+  // ── Fetch a page of search results ─────────────────────────────────
+  const fetchMore = useCallback(async (pageToken = "", reset = false) => {
     if (!query) return;
-    let ignore = false;
 
-    async function loadSearch() {
-      setLoading(true);
-      setError(null);
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
 
-      try {
-        // ✅ fetchSearchResults now returns { videos, nextPageToken, prevPageToken }
-        const result = await fetchSearchResults(query, pageToken);
+    setError(null);
 
-        if (!ignore) {
-          setVideos(result.videos);
-          setNextPageToken(result.nextPageToken);
-          setPrevPageToken(result.prevPageToken);
-        }
-      } catch {
-        if (!ignore) setError("Failed to load search results");
-      } finally {
-        if (!ignore) setLoading(false);
-      }
+    try {
+      const result = await fetchSearchResults(query, pageToken);
+
+      setVideos(prev => reset ? result.videos : [...prev, ...result.videos]);
+      setNextPageToken(result.nextPageToken);
+      setHasMore(!!result.nextPageToken);
+    } catch {
+      setError("Failed to load search results");
+      setHasMore(false);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
     }
+  }, [query]);
 
-    loadSearch();
-    return () => { ignore = true; };
-  }, [query, pageToken]);
+  // ── Reset when query changes ────────────────────────────────────────
+  useEffect(() => {
+    setVideos([]);
+    setNextPageToken(null);
+    setHasMore(true);
+    setError(null);
+    fetchMore("", true);
+  }, [query]);
 
-  const goNext = () => {
-    if (nextPageToken) setSearchParams({ q: query, pageToken: nextPageToken });
-  };
+  // ── IntersectionObserver ────────────────────────────────────────────
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
 
-  const goPrev = () => {
-    if (prevPageToken) setSearchParams({ q: query, pageToken: prevPageToken });
-    else setSearchParams({ q: query });
-  };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting && hasMore && !loadingMore && !loading) {
+          fetchMore(nextPageToken || "");
+        }
+      },
+      {
+        root: null,
+        rootMargin: "200px",
+        threshold: 0,
+      }
+    );
 
-  if (!query) return <div className="p-4 text-white">Enter a search term above</div>;
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, nextPageToken, fetchMore]);
+
+  if (!query) {
+    return (
+      <div className="p-8 text-center text-gray-400">
+        <p className="text-xl">🔍 Enter a search term above</p>
+      </div>
+    );
+  }
+
   if (loading) return <SearchShimmer />;
-  if (error) return <div className="p-4 text-red-500 font-semibold">{error}</div>;
+
+  if (error) {
+    return (
+      <div className="p-8 flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="bg-zinc-900 border border-red-800 rounded-xl p-8 text-center max-w-md">
+          <p className="text-red-400 text-4xl mb-4">⚠️</p>
+          <h2 className="text-white font-bold text-lg mb-2">Something went wrong</h2>
+          <p className="text-gray-400 text-sm">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4">
+      {/* Header */}
       <h2 className="mb-6 text-xl font-semibold text-white">
-        Results for <span className="text-blue-400">"{query}"</span>
+        Results for{" "}
+        <span className="text-red-400">"{query}"</span>
+        <span className="text-gray-400 text-sm font-normal ml-3">
+          {videos.length} videos loaded
+        </span>
       </h2>
 
-      {videos.length === 0 ? (
-        <div className="text-gray-400 text-center mt-12">No results found.</div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          {videos.map((video) => (
-            <TrendingCard key={video.video_id} video={video} />
-          ))}
+      {videos.length === 0 && !loadingMore ? (
+        <div className="text-center mt-12">
+          <p className="text-gray-400 text-xl">No results found.</p>
+          <p className="text-gray-500 text-sm mt-2">Try a different search term.</p>
         </div>
-      )}
+      ) : (
+        <>
+          {/* Results grid — appends as user scrolls */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+            {videos.map((video, index) => (
+              <TrendingCard
+                key={`${video.video_id}-${index}`}
+                video={video}
+              />
+            ))}
+          </div>
 
-      {/* ✅ Token-based pagination — works correctly with YouTube v3 */}
-      <div className="flex justify-center gap-4 mt-8">
-        {prevPageToken && (
-          <button
-            onClick={goPrev}
-            className="px-4 py-2 bg-zinc-700 rounded text-white hover:bg-zinc-600 transition"
-          >
-            ← Previous
-          </button>
-        )}
-        {nextPageToken && (
-          <button
-            onClick={goNext}
-            className="px-4 py-2 bg-zinc-700 rounded text-white hover:bg-zinc-600 transition"
-          >
-            Next →
-          </button>
-        )}
-      </div>
+          {/* Loading more spinner */}
+          {loadingMore && (
+            <div className="flex justify-center items-center py-10 gap-3">
+              <div className="w-6 h-6 border-2 border-zinc-600 border-t-red-500 rounded-full animate-spin" />
+              <span className="text-gray-400 text-sm">Loading more results...</span>
+            </div>
+          )}
+
+          {/* End of results */}
+          {!hasMore && !loadingMore && videos.length > 0 && (
+            <div className="flex flex-col items-center py-10 gap-2">
+              <div className="w-10 h-px bg-zinc-700" />
+              <p className="text-gray-500 text-sm">You've reached the end</p>
+              <div className="w-10 h-px bg-zinc-700" />
+            </div>
+          )}
+
+          {/* Sentinel */}
+          <div ref={sentinelRef} className="h-1 w-full" />
+        </>
+      )}
     </div>
   );
 }

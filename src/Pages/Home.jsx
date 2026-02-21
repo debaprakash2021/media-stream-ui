@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { YT_API_BASE, YT_API_KEY } from "../constants/api";
 import ShimmerCard from "../Components/ShimmerCard";
@@ -6,40 +6,84 @@ import ShimmerCard from "../Components/ShimmerCard";
 function Home() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [nextPageToken, setNextPageToken] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
 
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const query = searchParams.get("query") || "music";
-  const pageToken = searchParams.get("pageToken") || "";
 
-  useEffect(() => {
-    let ignore = false;
-    setLoading(true);
+  // Sentinel div ref — IntersectionObserver watches this
+  const sentinelRef = useRef(null);
+  // Track current query to reset on query change
+  const currentQueryRef = useRef(query);
 
-    async function fetchVideos() {
-      try {
-        const res = await fetch(
-          `${YT_API_BASE}/search?part=snippet&type=video&maxResults=12&q=${encodeURIComponent(query)}&pageToken=${pageToken}&key=${YT_API_KEY}`
-        );
-        const data = await res.json();
-
-        if (!ignore) {
-          setVideos(data.items || []);
-          setNextPageToken(data.nextPageToken || "");
-        }
-      } catch (error) {
-        console.error("Error fetching videos:", error);
-      } finally {
-        if (!ignore) setLoading(false);
-      }
+  // ── Fetch a page of videos ──────────────────────────────────────────
+  const fetchVideos = useCallback(async (pageToken = "", reset = false) => {
+    if (reset) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
     }
 
-    fetchVideos();
-    return () => { ignore = true; };
-  }, [query, pageToken]);
+    try {
+      const res = await fetch(
+        `${YT_API_BASE}/search?part=snippet&type=video&maxResults=12` +
+        `&q=${encodeURIComponent(query)}&pageToken=${pageToken}&key=${YT_API_KEY}`
+      );
+      const data = await res.json();
 
+      const newVideos = data.items || [];
+      const token = data.nextPageToken || null;
+
+      setVideos(prev => reset ? newVideos : [...prev, ...newVideos]);
+      setNextPageToken(token);
+      setHasMore(!!token);
+    } catch (error) {
+      console.error("Error fetching videos:", error);
+      setHasMore(false);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [query]);
+
+  // ── Reset when query changes ────────────────────────────────────────
+  useEffect(() => {
+    currentQueryRef.current = query;
+    setVideos([]);
+    setNextPageToken(null);
+    setHasMore(true);
+    fetchVideos("", true);
+  }, [query]);
+
+  // ── IntersectionObserver — fires when sentinel enters viewport ──────
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        // Only load more if: sentinel is visible + not already loading + more pages exist
+        if (entry.isIntersecting && hasMore && !loadingMore && !loading) {
+          fetchVideos(nextPageToken || "");
+        }
+      },
+      {
+        root: null,       // viewport
+        rootMargin: "200px", // start loading 200px before sentinel is visible
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, nextPageToken, fetchVideos]);
+
+  // ── Navigate to Watch page ──────────────────────────────────────────
   const handleVideoClick = (video) => {
     navigate("/watch", {
       state: {
@@ -52,16 +96,10 @@ function Home() {
     });
   };
 
-  const handleNext = () => {
-    if (nextPageToken) setSearchParams({ query, pageToken: nextPageToken });
-  };
-
-  const handlePrev = () => {
-    setSearchParams({ query, pageToken: "" });
-  };
-
   return (
     <div className="p-4 min-h-screen">
+
+      {/* Initial load shimmer */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
           {Array.from({ length: 12 }).map((_, i) => (
@@ -70,10 +108,11 @@ function Home() {
         </div>
       ) : (
         <>
+          {/* Video grid — new videos append here */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {videos.map((video) => (
+            {videos.map((video, index) => (
               <div
-                key={video.id.videoId}
+                key={`${video.id.videoId}-${index}`}
                 className="cursor-pointer group"
                 onClick={() => handleVideoClick(video)}
               >
@@ -109,24 +148,25 @@ function Home() {
             ))}
           </div>
 
-          <div className="mt-8 flex justify-center gap-4">
-            {pageToken && (
-              <button
-                onClick={handlePrev}
-                className="px-5 py-2 bg-zinc-700 text-white rounded-lg hover:bg-zinc-600 transition font-medium"
-              >
-                ← Previous
-              </button>
-            )}
-            {nextPageToken && (
-              <button
-                onClick={handleNext}
-                className="px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium"
-              >
-                Next →
-              </button>
-            )}
-          </div>
+          {/* Loading more spinner — shows between pages */}
+          {loadingMore && (
+            <div className="flex justify-center items-center py-10 gap-3">
+              <div className="w-6 h-6 border-2 border-zinc-600 border-t-red-500 rounded-full animate-spin" />
+              <span className="text-gray-400 text-sm">Loading more videos...</span>
+            </div>
+          )}
+
+          {/* End of results message */}
+          {!hasMore && !loadingMore && videos.length > 0 && (
+            <div className="flex flex-col items-center py-10 gap-2">
+              <div className="w-10 h-px bg-zinc-700" />
+              <p className="text-gray-500 text-sm">You've reached the end</p>
+              <div className="w-10 h-px bg-zinc-700" />
+            </div>
+          )}
+
+          {/* Sentinel — IntersectionObserver watches this invisible div */}
+          <div ref={sentinelRef} className="h-1 w-full" />
         </>
       )}
     </div>
