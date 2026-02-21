@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useRelatedVideos } from '../hooks/useRelatedVideos';
 
@@ -20,10 +20,9 @@ const Watch = () => {
   const navigate = useNavigate();
   const state = location.state || {};
 
-  // ✅ Real recommendations from YouTube API
-  const { videos: relatedVideos, loading: relatedLoading } = useRelatedVideos(
-    state.videoId || null
-  );
+  // ✅ Pass both videoId AND title so hook can build a keyword search query
+  const { videos: relatedVideos, loading: relatedLoading, loadingMore, hasMore, loadMore } =
+    useRelatedVideos(state.videoId || null, state.title || '');
 
   const [likes, setLikes] = useState(1234);
   const [dislikes, setDislikes] = useState(56);
@@ -35,6 +34,33 @@ const Watch = () => {
   const videoRef = useRef(null);
   const [hoverTime, setHoverTime] = useState(null);
   const [duration, setDuration] = useState(0);
+
+  // ✅ Sentinel ref for sidebar infinite scroll
+  const sidebarSentinelRef = useRef(null);
+
+  // ── Sidebar IntersectionObserver ──────────────────────────────────
+  // Watches a sentinel div at the BOTTOM of the recommendations list
+  // When it enters the sidebar's scroll viewport → load more
+  useEffect(() => {
+    const sentinel = sidebarSentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      {
+        root: sentinel.closest('aside'), // ✅ root is the sidebar itself, not the page
+        rootMargin: '100px',
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   const handleLike = () => setLikes(l => l + 1);
   const handleDislike = () => setDislikes(d => d + 1);
@@ -57,9 +83,7 @@ const Watch = () => {
 
   const handleEnded = () => {
     if (autoplay && videoRef.current) {
-      videoRef.current.src =
-        SAMPLE_URLS['ScMzIvxBSi4'][resolution] ||
-        SAMPLE_URLS['ScMzIvxBSi4']['1080p'];
+      videoRef.current.src = SAMPLE_URLS['ScMzIvxBSi4'][resolution];
       videoRef.current.play();
     }
   };
@@ -72,7 +96,7 @@ const Watch = () => {
 
   const handleProgressLeave = () => setHoverTime(null);
 
-  // Save to watch history
+  // ── Save to watch history ──────────────────────────────────────────
   useEffect(() => {
     if (state.videoId) {
       const videoData = {
@@ -92,7 +116,7 @@ const Watch = () => {
     }
   }, [state.videoId]);
 
-  // ✅ Clicking a recommended video loads it in the same Watch page
+  // ── Click a recommended video ──────────────────────────────────────
   const handleRelatedClick = (video) => {
     navigate('/watch', {
       state: {
@@ -103,6 +127,8 @@ const Watch = () => {
         thumbnail: video.thumbnail,
       },
     });
+    // Scroll main content back to top when new video loads
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const videoSrc = state.videoId
@@ -118,12 +144,12 @@ const Watch = () => {
     state.thumbnail || 'https://i.ytimg.com/vi/ScMzIvxBSi4/maxresdefault.jpg';
 
   return (
-    <div className="p-4 flex flex-col md:flex-row items-start bg-black min-h-screen gap-8">
+    <div className="flex flex-col md:flex-row bg-black min-h-screen">
 
       {/* ── Main Video Column ── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 p-4">
 
-        {/* ✅ Back button */}
+        {/* Back button */}
         <button
           onClick={() => navigate(-1)}
           className="mb-4 flex items-center gap-2 text-gray-400 hover:text-white transition text-sm self-start"
@@ -154,8 +180,6 @@ const Watch = () => {
               >
                 Your browser does not support the video tag.
               </video>
-
-              {/* Resolution selector */}
               <div className="absolute top-2 right-2 z-20">
                 <select
                   value={resolution}
@@ -246,7 +270,6 @@ const Watch = () => {
             <h3 className="text-base font-bold text-white mb-3">
               💬 Comments ({comments.length})
             </h3>
-
             <form onSubmit={handleComment} className="flex gap-2 mb-4">
               <input
                 type="text"
@@ -263,7 +286,6 @@ const Watch = () => {
                 Post
               </button>
             </form>
-
             <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
               {comments.map(c => (
                 <div key={c.id} className="bg-zinc-800 rounded-lg p-3 text-white text-sm">
@@ -276,14 +298,18 @@ const Watch = () => {
         </div>
       </div>
 
-      {/* ── Recommendations Column ── */}
-      <aside className="w-full md:w-80 shrink-0">
-        <h2 className="text-base font-bold text-white mb-4">Up Next</h2>
+      {/* ── Recommendations Sidebar ── */}
+      {/* ✅ overflow-y-auto makes sidebar scroll independently from main content */}
+      <aside className="w-full md:w-80 shrink-0 md:h-screen md:sticky md:top-0 overflow-y-auto bg-black border-l border-zinc-800 p-4">
 
+        <h2 className="text-base font-bold text-white mb-4 sticky top-0 bg-black py-2 z-10">
+          Up Next
+        </h2>
+
+        {/* Initial loading shimmer */}
         {relatedLoading ? (
-          // Shimmer skeleton while loading
           <div className="flex flex-col gap-3">
-            {Array.from({ length: 6 }).map((_, i) => (
+            {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="flex gap-2 animate-pulse">
                 <div className="w-40 aspect-video bg-zinc-800 rounded-lg shrink-0" />
                 <div className="flex-1 py-1">
@@ -294,36 +320,56 @@ const Watch = () => {
               </div>
             ))}
           </div>
-        ) : relatedVideos.length > 0 ? (
-          // ✅ Real related videos from YouTube API
-          <div className="flex flex-col gap-3">
-            {relatedVideos.map(video => (
-              <div
-                key={video.id}
-                className="flex gap-2 cursor-pointer group"
-                onClick={() => handleRelatedClick(video)}
-              >
-                <div className="relative w-40 aspect-video rounded-lg overflow-hidden shrink-0">
-                  <img
-                    src={video.thumbnail}
-                    alt={video.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                  />
-                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                    <span className="text-white text-xl">▶</span>
+        ) : (
+          <>
+            {/* ✅ Related video cards — appended as user scrolls sidebar */}
+            <div className="flex flex-col gap-3">
+              {relatedVideos.map((video, index) => (
+                <div
+                  key={`${video.id}-${index}`}
+                  className="flex gap-2 cursor-pointer group"
+                  onClick={() => handleRelatedClick(video)}
+                >
+                  <div className="relative w-40 aspect-video rounded-lg overflow-hidden shrink-0">
+                    <img
+                      src={video.thumbnail}
+                      alt={video.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                      <span className="text-white text-xl">▶</span>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0 py-0.5">
+                    <p className="text-white text-xs font-semibold line-clamp-2 leading-snug group-hover:text-red-400 transition">
+                      {video.title}
+                    </p>
+                    <p className="text-gray-400 text-xs mt-1">{video.channel}</p>
                   </div>
                 </div>
-                <div className="flex-1 min-w-0 py-0.5">
-                  <p className="text-white text-xs font-semibold line-clamp-2 leading-snug group-hover:text-red-400 transition">
-                    {video.title}
-                  </p>
-                  <p className="text-gray-400 text-xs mt-1">{video.channel}</p>
-                </div>
+              ))}
+            </div>
+
+            {/* Loading more spinner inside sidebar */}
+            {loadingMore && (
+              <div className="flex justify-center items-center py-6 gap-2">
+                <div className="w-5 h-5 border-2 border-zinc-600 border-t-red-500 rounded-full animate-spin" />
+                <span className="text-gray-500 text-xs">Loading more...</span>
               </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-gray-500 text-sm">No recommendations available.</p>
+            )}
+
+            {/* End of recommendations */}
+            {!hasMore && !loadingMore && relatedVideos.length > 0 && (
+              <div className="flex flex-col items-center py-6 gap-2">
+                <div className="w-8 h-px bg-zinc-700" />
+                <p className="text-gray-600 text-xs">No more recommendations</p>
+                <div className="w-8 h-px bg-zinc-700" />
+              </div>
+            )}
+
+            {/* ✅ Sentinel — IntersectionObserver watches this inside the sidebar */}
+            <div ref={sidebarSentinelRef} className="h-1 w-full" />
+          </>
         )}
       </aside>
     </div>
